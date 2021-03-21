@@ -8,6 +8,7 @@ from torch_geometric.nn import GCNConv, SAGEConv, GINConv, TAGConv, GATConv
 from models.mlp import MLP
 
 
+
 """
 Things to do:
 
@@ -16,7 +17,7 @@ Understand necessity of skip_connect
 
 """
 class batch_norm(torch.nn.Module):
-    def __init__(self, hidden_features, type_norm, skip_connect=False, num_groups=1,
+    def __init__(self, hidden_features, type_norm, skip_connect=False, num_groups=2,
                  skip_weight=0.005):
         super(batch_norm, self).__init__()
         self.type_norm = type_norm
