@@ -295,7 +295,7 @@ def get_data_sample(G, set_index, hop_num, feature_flags, max_sprw, label, debug
 def get_model(layers, in_features, out_features, prop_depth, args, logger):
     model_name = args.model
     if model_name in ['DE-GNN', 'GIN', 'GCN', 'GraphSAGE', 'GAT']:
-        model = GNNModel(layers=layers, in_features=in_features, hidden_features=args.hidden_features,
+        model = GNNModel(num_layers=layers, in_features=in_features, hidden_features=args.hidden_features,
                          out_features=out_features, prop_depth=prop_depth, dropout=args.dropout,
                          model_name=model_name)
     else:

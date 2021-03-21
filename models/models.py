@@ -81,7 +81,7 @@ class GNNModel(nn.Module):
                     self.layers.append(Layer(in_channels=hidden_features, out_channels=hidden_features))
         # we're  building up the normalization layers here.
         if self.type_norm == 'group':
-            self.layer_norms = nn.ModuleList([batch_norm(layers.out_channels,'group',skip_connect = True) for i in range(self.layers)])
+            self.layer_norms = nn.ModuleList([batch_norm(hidden_features,'group',skip_connect = True) for i in range(self.num_layers)])
         else:
             self.layer_norms = nn.ModuleList([nn.LayerNorm(hidden_features) for i in range(self.num_layers)])
         self.merger = nn.Linear(3 * hidden_features, hidden_features)
