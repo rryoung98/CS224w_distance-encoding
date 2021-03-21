@@ -2,19 +2,64 @@
 from itertools import combinations
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 import torch_geometric as tg
 from torch_geometric.nn import GCNConv, SAGEConv, GINConv, TAGConv, GATConv
 from models.mlp import MLP
 
 
+"""
+Things to do:
+
+Determine apppropriate num_groups
+Understand necessity of skip_connect
+
+"""
+class batch_norm(torch.nn.Module):
+    def __init__(self, hidden_features, type_norm, skip_connect=False, num_groups=1,
+                 skip_weight=0.005):
+        super(batch_norm, self).__init__()
+        self.type_norm = type_norm
+        self.skip_connect = skip_connect
+        self.num_groups = num_groups
+        self.skip_weight = skip_weight
+        self.hidden_features= hidden_features
+        if self.type_norm == 'batch':
+            self.bn = torch.nn.BatchNorm1d(hidden_features, momentum=0.3)
+        elif self.type_norm == 'group':
+            self.bn = torch.nn.BatchNorm1d(hidden_features*self.num_groups, momentum=0.3)
+            self.group_func = torch.nn.Linear(hidden_features, self.num_groups, bias=True)
+        else:
+            pass
+
+    def forward(self, x):
+        if self.type_norm == 'None':
+            return x
+        elif self.type_norm == 'batch':
+            # print(self.bn.running_mean.size())
+            return self.bn(x)
+        elif self.type_norm == 'group':
+            if self.num_groups == 1:
+                x_temp = self.bn(x)
+            else:
+                score_cluster = F.softmax(self.group_func(x), dim=1)
+                x_temp = torch.cat([score_cluster[:, group].unsqueeze(dim=1) * x for group in range(self.num_groups)], dim=1)
+                x_temp = self.bn(x_temp).view(-1, self.num_groups, self.hidden_features).sum(dim=1)
+            x = x + x_temp * self.skip_weight
+            return x
+
+        else:
+            raise Exception(f'the normalization has not been implemented')
+
 class GNNModel(nn.Module):
-    def __init__(self, layers, in_features, hidden_features, out_features, prop_depth, dropout=0.0, model_name='DE-GNN'):
+    def __init__(self, num_layers, in_features, hidden_features, out_features, prop_depth, dropout=0.0, model_name='DE-GNN',type_norm='group'):
         super(GNNModel, self).__init__()
-        self.layers, self.in_features, self.hidden_features, self.out_features, self.model_name = layers, in_features, hidden_features, out_features, model_name
+        self.num_layers, self.in_features, self.hidden_features, self.out_features, self.model_name = num_layers, in_features, hidden_features, out_features, model_name
         Layer = self.get_layer_class()
         self.act = nn.ReLU()
         self.dropout = nn.Dropout(p=dropout)
         self.layers = nn.ModuleList()
+        self.type_norm = type_norm
         if self.model_name == 'DE-GNN':
             self.layers.append(Layer(in_channels=in_features, out_channels=hidden_features, K=prop_depth))
         elif self.model_name == 'GIN':
@@ -22,8 +67,8 @@ class GNNModel(nn.Module):
                 Layer(MLP(num_layers=2, input_dim=in_features, hidden_dim=hidden_features, output_dim=hidden_features)))
         else:
             self.layers.append(Layer(in_channels=in_features, out_channels=hidden_features))
-        if layers > 1:
-            for i in range(layers - 1):
+        if self.num_layers > 1:
+            for i in range(self.num_layers - 1):
                 if self.model_name == 'DE-GNN':
                     self.layers.append(Layer(in_channels=hidden_features, out_channels=hidden_features, K=prop_depth))
                 elif self.model_name == 'GIN':
@@ -34,7 +79,11 @@ class GNNModel(nn.Module):
                 else:
                     # for GCN and GraphSAGE
                     self.layers.append(Layer(in_channels=hidden_features, out_channels=hidden_features))
-        self.layer_norms = nn.ModuleList([nn.LayerNorm(hidden_features) for i in range(layers)])
+        # we're  building up the normalization layers here.
+        if self.type_norm == 'group':
+            self.layer_norms = nn.ModuleList([batch_norm(layers.out_channels,'group',skip_connect = True) for i in range(self.layers)])
+        else:
+            self.layer_norms = nn.ModuleList([nn.LayerNorm(hidden_features) for i in range(self.num_layers)])
         self.merger = nn.Linear(3 * hidden_features, hidden_features)
         self.feed_forward = FeedForwardNetwork(hidden_features, out_features)
 
